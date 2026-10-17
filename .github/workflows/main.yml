@@ -1,0 +1,70 @@
+
+name: TFTF Revival - Source Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    name: Validate revival source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check required project files
+        run: |
+          set -eu
+          test -f README.md
+          test -f COMPLIANCE.md
+          test -f Server/gamedata.py
+          test -f Server/fakeserver.py
+          test -f tools/apk_patcher_gui/pipeline.lbl
+          test -f patches/patch_il2cpp.lbl
+          echo "Required source files found."
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q Server patches
+
+      - name: Validate JSON files
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          files = sorted(Path(".").rglob("*.json"))
+          if not files:
+              raise SystemExit("No JSON files found.")
+
+          for path in files:
+              if any(part in {"media", "probe", ".git"} for part in path.parts):
+                  continue
+              with path.open(encoding="utf-8") as f:
+                  json.load(f)
+              print(f"Valid JSON: {path}")
+
+          print(f"Validated {len(files)} JSON files.")
+          PY
+
+      - name: Report project structure
+        run: |
+          for dir in Server tools patches re_notes; do
+            test -d "$dir" || {
+              echo "Missing required directory: $dir"
+              exit 1
+            }
+            echo "Found $dir/"
+          done
